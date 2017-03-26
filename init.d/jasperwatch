@@ -1,0 +1,124 @@
+#!/bin/bash
+#
+# Start on runlevels 2, 3, 4 and 5. Start late, kill early.
+# chkconfig: 345 95 05
+#
+#===========================================
+#Description     :init script for Jasper watch 
+#author          :Michal Muransky
+#date            :23-Jul-2016
+#version         :v1.0
+#===========================================
+#
+#path to executable script
+progpath='/home/pi/jasperwatch/bin/jasperwatchd'
+
+# arguments to script
+opts=''
+
+# binary program name
+prog=$(basename $progpath)
+
+# pid file
+pidfile="/var/run/jasperwatch/${prog}.pid"
+if [ ! -d /var/run/jasperwatch ]; then sudo mkdir /var/run/jasperwatch > /dev/null ; sudo chown pi:pi /var/run/jasperwatch > /dev/null
+fi
+
+# user
+runas="guest"
+
+# make sure you are a root
+user()  {
+  wai=$(whoami 2>/dev/null)
+  if [ $wai !=root ]; then
+      echo 'You must be a root to manage this daemon.'
+      exit
+  fi
+}
+
+# make sure full path to executable binary is found
+! [ -x $progpath ] && echo "$progpath: executable not found" && exit 1
+
+eval_cmd() {
+  local rc=$1
+  if [ $rc -eq 0 ]; then
+    echo '[  OK  ]'
+  else
+    echo '[FAILED]'
+  fi
+  return $rc
+}
+
+start() {
+  #user
+  # see if running
+  local pidnr=$(cat $pidfile 2>/dev/null)
+  if [ -n "$pidnr" ]; then  
+
+    echo "$prog (pid $pidnr) is already running"
+    return 0
+  fi
+  printf "%-50s%s" "Starting $prog: " ''
+  $progpath $opts &
+
+  # save pid to file if you want
+  echo $! > $pidfile
+
+  # check again if running
+  cat $pidfile >/dev/null 2>&1
+  eval_cmd $?
+}
+
+stop() {
+  #user
+  # see if running
+  local pidnr=$(cat $pidfile 2>/dev/null) 
+  if [ -z "$pidnr" ]; then
+    echo "$prog not running"
+    return 0
+  fi
+  printf "%-50s%s" "Stopping $prog: " ''
+  rm -f $pidfile
+  kill -9 $pidnr
+  eval_cmd $?
+}
+
+status() {
+  # see if running
+  local pidnr=$(cat $pidfile 2>/dev/null)
+  if [ -n "$pidnr" ]; then
+     echo "$prog (pid $pidnr) is running"
+  else
+    echo "$prog is stopped"
+  fi
+}
+
+resetjasper() {
+  ps -ef |grep "python2 /home/pi/jasper-client/jasper.py" |grep -v grep| awk '{print $2}'| xargs kill 
+  echo "JasperWatchdog restarted Jasper daemon."
+}
+
+case $1 in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  restart)
+    stop
+    sleep 1
+    start
+    ;;
+  resetjasper)
+    resetjasper
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|status|restart|resetjasper}"
+    exit 1
+esac
+
+exit $?
